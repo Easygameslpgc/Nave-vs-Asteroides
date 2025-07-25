@@ -1,0 +1,224 @@
+<html lang="es"><head>
+  <meta charset="UTF-8">
+  <title>Nave vs Asteroide</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    canvas { display: block; margin: 0 auto; background: black; }
+    #gameOver {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      text-align: center;
+      display: none;
+    }
+    #gameOver h1 { font-size: 3em; margin-bottom: 20px; }
+    #gameOver button {
+      padding: 10px 20px;
+      font-size: 1.2em;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    #gameOver p {
+      margin-top: 10px;
+      font-size: 1.2em;
+    }
+    #startScreen {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 20px;
+      border-radius: 10px;
+    }
+    #startScreen button {
+      padding: 10px 20px;
+      font-size: 1.2em;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="1366" height="641"></canvas>
+  <div id="startScreen">
+    <h1>Nave vs Asteroide</h1>
+    <button onclick="startGame()">Jugar</button>
+  </div>
+  <div id="gameOver">
+    <h1>¡Perdiste Bot!</h1>
+    <button onclick="restartGame()">Volver a jugar</button>
+    <p id="finalScore"></p>
+  </div>
+  <audio id="explosionSound" src="https://freesound.org/data/previews/316/316957_4939433-lq.mp3"></audio>
+  <audio id="bgMusic" src="https://cdn.pixabay.com/audio/2023/03/28/audio_8c96c48c4b.mp3" loop=""></audio>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const explosionSound = document.getElementById("explosionSound");
+    const bgMusic = document.getElementById("bgMusic");
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let nave = { x: canvas.width / 2 - 20, y: canvas.height - 90, width: 40, height: 40, speed: 12.6 };
+    let plataforma = { x: 0, y: canvas.height - 50, width: canvas.width, height: 2 };
+    let asteroides = [];
+    let keys = {};
+    let puntuacion = 0;
+    let mejorPuntaje = parseInt(localStorage.getItem("mejorPuntaje")) || 0;
+    let intervalo;
+    let puntuacionLoop;
+    let dificultadLoop;
+    let dificultad = 5.28;
+    let gameOver = false;
+    let juegoIniciado = false;
+    let coloresFondo = ["black", "darkgray", "darkblue", "darkred", "darkgreen"];
+    let fondoActual = 0;
+
+    document.addEventListener("keydown", e => keys[e.key] = true);
+    document.addEventListener("keyup", e => keys[e.key] = false);
+
+    function actualizarFondo() {
+      const color = coloresFondo[Math.floor(puntuacion / 2000) % coloresFondo.length];
+      canvas.style.background = color;
+    }
+
+    function drawNave() {
+      ctx.fillStyle = "lime";
+      ctx.beginPath();
+      ctx.moveTo(nave.x + nave.width / 2, nave.y);
+      ctx.lineTo(nave.x, nave.y + nave.height);
+      ctx.lineTo(nave.x + nave.width, nave.y + nave.height);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawPlataforma() {
+      let gradient = ctx.createLinearGradient(0, plataforma.y, canvas.width, plataforma.y);
+      gradient.addColorStop(0, "rgba(173,216,230,0.2)");
+      gradient.addColorStop(0.5, "rgba(173,216,230,1)");
+      gradient.addColorStop(1, "rgba(173,216,230,0.2)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(plataforma.x, plataforma.y, plataforma.width, plataforma.height);
+    }
+
+    function moverNave() {
+      if ((keys["ArrowLeft"] || keys["a"]) && nave.x > 0) { nave.x -= nave.speed; }
+      if ((keys["ArrowRight"] || keys["d"]) && nave.x < canvas.width - nave.width) { nave.x += nave.speed; }
+    }
+
+    function crearAsteroide() {
+      let tamaño = Math.random() * 30 + 20;
+      let velocidadBase = tamaño > 35 ? dificultad * 0.9 : dificultad * 1.4;
+      let nuevo = {
+        x: Math.random() * (canvas.width - tamaño),
+        y: -tamaño,
+        width: tamaño,
+        height: tamaño,
+        velocidad: velocidadBase
+      };
+      asteroides.push(nuevo);
+    }
+
+    function dibujarAsteroides() {
+      ctx.fillStyle = "gray";
+      for (let a of asteroides) {
+        ctx.fillRect(a.x, a.y, a.width, a.height);
+        a.y += a.velocidad;
+      }
+    }
+
+    function detectarColision() {
+      for (let a of asteroides) {
+        if (
+          nave.x < a.x + a.width &&
+          nave.x + nave.width > a.x &&
+          nave.y < a.y + a.height &&
+          nave.y + nave.height > a.y
+        ) {
+          gameOver = true;
+          explosionSound.play();
+          document.getElementById("gameOver").style.display = "block";
+          document.getElementById("finalScore").textContent = `Tu puntuación fue: ${puntuacion}`;
+          clearInterval(intervalo);
+          clearInterval(puntuacionLoop);
+          clearInterval(dificultadLoop);
+          if (puntuacion > mejorPuntaje) {
+            mejorPuntaje = puntuacion;
+            localStorage.setItem("mejorPuntaje", mejorPuntaje);
+          }
+        }
+      }
+    }
+
+    function mostrarPuntaje() {
+      ctx.fillStyle = "white";
+      ctx.font = "20px Arial";
+      ctx.fillText("Puntaje: " + puntuacion, canvas.width - 150, 30);
+      ctx.fillText("Record: " + mejorPuntaje, canvas.width - 150, 50);
+    }
+
+    function update() {
+      if (gameOver || !juegoIniciado) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      moverNave();
+      drawPlataforma();
+      drawNave();
+      dibujarAsteroides();
+      detectarColision();
+      mostrarPuntaje();
+      asteroides = asteroides.filter(a => a.y < canvas.height);
+    }
+
+    function aumentarPuntaje() {
+      if (!gameOver) {
+        puntuacion += 20;
+        actualizarFondo();
+      }
+    }
+
+    function aumentarDificultadConTiempo() {
+      if (!gameOver) {
+        dificultad *= 1.80;
+      }
+    }
+
+    function restartGame() {
+      nave.x = canvas.width / 2 - 20;
+      nave.y = canvas.height - 90;
+      asteroides = [];
+      puntuacion = 0;
+      dificultad = 5.28;
+      gameOver = false;
+      actualizarFondo();
+      document.getElementById("gameOver").style.display = "none";
+      document.getElementById("finalScore").textContent = "";
+      intervalo = setInterval(() => crearAsteroide(), 300);
+      puntuacionLoop = setInterval(aumentarPuntaje, 1000);
+      dificultadLoop = setInterval(aumentarDificultadConTiempo, 60000);
+      requestAnimationFrame(gameLoop);
+    }
+
+    function startGame() {
+      document.getElementById("startScreen").style.display = "none";
+      juegoIniciado = true;
+      actualizarFondo();
+      intervalo = setInterval(() => crearAsteroide(), 300);
+      puntuacionLoop = setInterval(aumentarPuntaje, 1000);
+      dificultadLoop = setInterval(aumentarDificultadConTiempo, 60000);
+      requestAnimationFrame(gameLoop);
+    }
+
+    function gameLoop() {
+      update();
+      if (!gameOver) requestAnimationFrame(gameLoop);
+    }
+  </script>
+
+
+
+</body></html>
